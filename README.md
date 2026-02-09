@@ -15,6 +15,10 @@ OpenCode-StoryForge is the editorial swarm plugin for OpenCode that orchestrates
 
 ## Usage
 
+## Editor-in-Chief Role
+
+OpenCode surfaces `editor_in_chief` as the primary role inside the UI, so you can pick it from the agent selector just like any other OpenCode plugin. When you kick off the Editor-in-Chief, StoryForge inherits whichever model you selected for that session (the same behavior as `opencode-swarm`), and you can still override the model via `opencode-writer-swarm` config if you need a different fallback.
+
 1. Add the plugin to your `opencode.json`.
 2. Configure models in `~/.config/opencode/opencode-writer-swarm.json` or `.opencode/opencode-writer-swarm.json`.
 3. Invoke `@editor_in_chief` with a writing request.
