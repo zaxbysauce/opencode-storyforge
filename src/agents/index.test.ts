@@ -10,6 +10,7 @@ describe('createAgents', () => {
 			qa_retry_limit: 3,
 			file_retry_enabled: true,
 			max_file_operation_retries: 3,
+			config_validation_enabled: true,
 			agents: {
 				writer: { model: 'custom-model', temperature: 0.8 },
 			},

@@ -1,4 +1,4 @@
-import type { Plugin } from '@opencode-ai/plugin';
+import type { Hooks } from '@opencode-ai/plugin';
 import type { PluginConfig } from '../config';
 import { warn } from '../utils';
 import {
@@ -11,7 +11,7 @@ import { readWriterFileAsync, safeHook } from './utils';
 export function createSystemEnhancerHook(
 	config: PluginConfig,
 	directory: string,
-): Partial<Plugin> {
+): Partial<Hooks> {
 	return {
 		'experimental.chat.system.transform': safeHook(
 			async (

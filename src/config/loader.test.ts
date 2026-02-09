@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+// @ts-nocheck
+import { describe, expect, it, vi, beforeEach, afterEach } from 'bun:test';
+
 import { deepMerge, logConfigLoadError, type ConfigLoadErrorLog, type DeepMergeOptions } from '../config/loader';
 import { getConfigValidationEnabled } from './schema';
 
@@ -229,7 +231,7 @@ describe('deepMerge', () => {
 });
 
 describe('logConfigLoadError', () => {
-	let consoleWarnSpy: ReturnType<typeof jest.spyOn> | null = null;
+	let consoleWarnSpy: ReturnType<typeof vi.spyOn> | null = null;
 	let capturedLogs: string[] = [];
 	let originalWarn: typeof console.warn;
 

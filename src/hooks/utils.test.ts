@@ -151,8 +151,12 @@ describe('composeHandlers', () => {
 	it('executes handlers in order', async () => {
 		const order: string[] = [];
 		const handler = composeHandlers(
-			async () => order.push('first'),
-			async () => order.push('second'),
+			async () => {
+				order.push('first');
+			},
+			async () => {
+				order.push('second');
+			},
 		);
 
 		await handler({}, {} as any);
