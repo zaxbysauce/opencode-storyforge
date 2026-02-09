@@ -29,6 +29,8 @@ export function formatStartupLog(agentCount: number, configKeys: string[], direc
 
 type StoryForgeConfig = Config & PluginConfig & { agent?: Record<string, SDKAgentConfig> };
 
+export type PluginInitConfig = StoryForgeConfig;
+
 export function ensureAgentMap(
   opencodeConfig: StoryForgeConfig,
   agents: Record<string, SDKAgentConfig>,

@@ -29,7 +29,7 @@ describe('extractDecisions', () => {
   });
 
   test('truncates output when limit provided', () => {
-    const longList = '# Decisions\n' + Array.from({ length: 100 }, (_, i) => `- Item ${i}`).join('\n');
+		const longList = '# Context\n\n## Decisions\n' + Array.from({ length: 100 }, (_, i) => `- Item ${i}`).join('\n');
     const truncated = extractDecisions(longList, 50);
     expect(truncated?.length).toBeLessThanOrEqual(50);
   });

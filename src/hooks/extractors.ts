@@ -24,7 +24,7 @@ export function extractCurrentPhase(content: string): string | null {
 
 export function extractIncompleteTasks(content: string): string | null {
   const section = getSectionLines(content, 'Workflow Status');
-  const tasks = section.filter((line) => line.startsWith('- [ ]'));
+  const tasks = section.filter((line) => line.startsWith('- [ ]')).map((line) => line.replace('- [ ]', '').trim());
   return tasks.length ? tasks.join('\n') : null;
 }
 

@@ -138,7 +138,7 @@ describe('WriterSwarmPlugin', () => {
 			directory: process.cwd(),
 		});
 
-		expect(plugin.name).toBe('opencode-writer-swarm');
+		expect(plugin.name).toBe('OpenCode-StoryForge');
 		expect(plugin.agent).toBeDefined();
 		expect(plugin.tool?.read_writer_file).toBeDefined();
 
@@ -166,8 +166,8 @@ describe('system enhancer hook', () => {
 	});
 
 	test('appends context entries when files exist', async () => {
-		await writeFixture('plan.md', '# Workflow Status\n- [ ] Task 1');
-		await writeFixture('context.md', '# Context\n- Decision: Test');
+		await writeFixture('plan.md', '# Plan\n\n## Workflow Status\n- [ ] Task 1');
+		await writeFixture('context.md', '# Context\n\n## Decisions\n- Decision: Test');
 
 		const hook = createSystemEnhancerHook({}, FIXTURE_DIR);
 		const transformer = hook['experimental.chat.system.transform'];
