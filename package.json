@@ -1,6 +1,6 @@
 {
 "name": "opencode-writer-swarm",
-  "version": "1.2.1",
+  "version": "1.2.2",
  "description": "Editorial swarm plugin for OpenCode - professional writing workflow with editor-in-chief, writers, and reviewers",
  "main": "dist/index.js",
  "types": "dist/index.d.ts",
@@ -25,7 +25,7 @@
   "templates"
  ],
  "scripts": {
-  "build": "bun build src/index.ts --outdir dist --target bun --format esm && tsc --emitDeclarationOnly",
+  "build": "bun build src/index.ts --outdir dist --target node --format esm && tsc --emitDeclarationOnly",
   "typecheck": "tsc --noEmit",
   "test": "bun test",
   "lint": "bun run scripts/check-records.ts && biome lint .",
