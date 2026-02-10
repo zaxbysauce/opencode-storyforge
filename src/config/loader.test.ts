@@ -2,7 +2,22 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'bun:test';
 
 import { deepMerge, logConfigLoadError, type ConfigLoadErrorLog, type DeepMergeOptions } from '../config/loader';
-import { getConfigValidationEnabled } from './schema';
+import {
+	getConfigValidationEnabled,
+	getContextBudgetDefaults,
+	getEvidenceDefaults,
+	getGuardrailsDefaults,
+	getHooksDefaults,
+	PluginConfigSchema,
+	ContextBudgetConfigSchema,
+	EvidenceConfigSchema,
+	GuardrailsConfigSchema,
+	HooksConfigSchema,
+	type ContextBudgetConfig,
+	type EvidenceConfig,
+	type GuardrailsConfig,
+	type HooksConfig,
+} from './schema';
 
 describe('deepMerge', () => {
 	describe('Happy path', () => {
@@ -231,15 +246,19 @@ describe('deepMerge', () => {
 });
 
 describe('logConfigLoadError', () => {
-	let consoleWarnSpy: ReturnType<typeof vi.spyOn> | null = null;
-	let capturedLogs: string[] = [];
+	interface LogCapture {
+		message: string;
+		args: unknown[];
+	}
+
+	let capturedLogs: LogCapture[] = [];
 	let originalWarn: typeof console.warn;
 
 	beforeEach(() => {
 		capturedLogs = [];
 		originalWarn = console.warn;
-		console.warn = (...args: any[]) => {
-			capturedLogs.push(args.join(' '));
+		console.warn = (...args: unknown[]) => {
+			capturedLogs.push({ message: String(args[0]), args: args.slice(1) });
 		};
 	});
 
@@ -256,20 +275,18 @@ describe('logConfigLoadError', () => {
 
 			logConfigLoadError(filePath, error);
 
-			expect(capturedLogs).toHaveLength(1);
-			const logMessage = capturedLogs[0];
-			expect(logMessage).toContain('[opencode-writer-swarm] Config load error:');
+		expect(capturedLogs).toHaveLength(1);
+		const logRecord = capturedLogs[0];
+		expect(logRecord.message).toContain('Config load error');
+		expect(logRecord.args.length).toBeGreaterThanOrEqual(1);
 
-			// Extract and parse the JSON portion
-			const jsonMatch = logMessage.match(/\{.*\}$/);
-			expect(jsonMatch).toBeTruthy();
-			const logEntry: ConfigLoadErrorLog = JSON.parse(jsonMatch![0]);
+		const logEntry = logRecord.args[0] as ConfigLoadErrorLog;
 
-			expect(logEntry.filePath).toBe(filePath);
-			expect(logEntry.errorCode).toBe('ENOENT');
-			expect(logEntry.errorName).toBe('Error');
-			expect(logEntry.message).toBe('Test error message');
-			expect(logEntry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/);
+		expect(logEntry.filePath).toBe(filePath);
+		expect(logEntry.errorCode).toBe('ENOENT');
+		expect(logEntry.errorName).toBe('Error');
+		expect(logEntry.message).toBe('Test error message');
+		expect(logEntry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/);
 		});
 
 		it('should log structured error without error code', () => {
@@ -278,16 +295,15 @@ describe('logConfigLoadError', () => {
 
 			logConfigLoadError(filePath, error);
 
-			expect(capturedLogs).toHaveLength(1);
-			const logMessage = capturedLogs[0];
-			const jsonMatch = logMessage.match(/\{.*\}$/);
-			expect(jsonMatch).toBeTruthy();
-			const logEntry: ConfigLoadErrorLog = JSON.parse(jsonMatch![0]);
+		expect(capturedLogs).toHaveLength(1);
+		const logRecord = capturedLogs[0];
+		expect(logRecord.args.length).toBeGreaterThanOrEqual(1);
+		const logEntry = logRecord.args[0] as ConfigLoadErrorLog;
 
-			expect(logEntry.filePath).toBe(filePath);
-			expect(logEntry.errorCode).toBeNull();
-			expect(logEntry.errorName).toBe('Error');
-			expect(logEntry.message).toBe('Parse error');
+		expect(logEntry.filePath).toBe(filePath);
+		expect(logEntry.errorCode).toBeNull();
+		expect(logEntry.errorName).toBe('Error');
+		expect(logEntry.message).toBe('Parse error');
 		});
 
 		it('should log structured error with non-Error value', () => {
@@ -296,16 +312,15 @@ describe('logConfigLoadError', () => {
 
 			logConfigLoadError(filePath, error);
 
-			expect(capturedLogs).toHaveLength(1);
-			const logMessage = capturedLogs[0];
-			const jsonMatch = logMessage.match(/\{.*\}$/);
-			expect(jsonMatch).toBeTruthy();
-			const logEntry: ConfigLoadErrorLog = JSON.parse(jsonMatch![0]);
+		expect(capturedLogs).toHaveLength(1);
+		const logRecord = capturedLogs[0];
+		expect(logRecord.args.length).toBeGreaterThanOrEqual(1);
+		const logEntry = logRecord.args[0] as ConfigLoadErrorLog;
 
-			expect(logEntry.filePath).toBe(filePath);
-			expect(logEntry.errorCode).toBeNull();
-			expect(logEntry.errorName).toBe('UnknownError');
-			expect(logEntry.message).toBe('String error message');
+		expect(logEntry.filePath).toBe(filePath);
+		expect(logEntry.errorCode).toBeNull();
+		expect(logEntry.errorName).toBe('UnknownError');
+		expect(logEntry.message).toBe('String error message');
 		});
 
 		it('should log structured error with number', () => {
@@ -314,16 +329,15 @@ describe('logConfigLoadError', () => {
 
 			logConfigLoadError(filePath, error);
 
-			expect(capturedLogs).toHaveLength(1);
-			const logMessage = capturedLogs[0];
-			const jsonMatch = logMessage.match(/\{.*\}$/);
-			expect(jsonMatch).toBeTruthy();
-			const logEntry: ConfigLoadErrorLog = JSON.parse(jsonMatch![0]);
+		expect(capturedLogs).toHaveLength(1);
+		const logRecord = capturedLogs[0];
+		expect(logRecord.args.length).toBeGreaterThanOrEqual(1);
+		const logEntry = logRecord.args[0] as ConfigLoadErrorLog;
 
-			expect(logEntry.filePath).toBe(filePath);
-			expect(logEntry.errorCode).toBeNull();
-			expect(logEntry.errorName).toBe('UnknownError');
-			expect(logEntry.message).toBe('42');
+		expect(logEntry.filePath).toBe(filePath);
+		expect(logEntry.errorCode).toBeNull();
+		expect(logEntry.errorName).toBe('UnknownError');
+		expect(logEntry.message).toBe('42');
 		});
 
 		it('should log structured error with object', () => {
@@ -332,16 +346,15 @@ describe('logConfigLoadError', () => {
 
 			logConfigLoadError(filePath, error);
 
-			expect(capturedLogs).toHaveLength(1);
-			const logMessage = capturedLogs[0];
-			const jsonMatch = logMessage.match(/\{.*\}$/);
-			expect(jsonMatch).toBeTruthy();
-			const logEntry: ConfigLoadErrorLog = JSON.parse(jsonMatch![0]);
+		expect(capturedLogs).toHaveLength(1);
+		const logRecord = capturedLogs[0];
+		expect(logRecord.args.length).toBeGreaterThanOrEqual(1);
+		const logEntry = logRecord.args[0] as ConfigLoadErrorLog;
 
-			expect(logEntry.filePath).toBe(filePath);
-			expect(logEntry.errorCode).toBeNull();
-			expect(logEntry.errorName).toBe('UnknownError');
-			expect(logEntry.message).toBe('[object Object]');
+		expect(logEntry.filePath).toBe(filePath);
+		expect(logEntry.errorCode).toBeNull();
+		expect(logEntry.errorName).toBe('UnknownError');
+		expect(logEntry.message).toBe('[object Object]');
 		});
 	});
 });
@@ -458,13 +471,331 @@ describe('deepMerge prototype pollution protection', () => {
 	});
 
 	describe('default behavior (no options provided)', () => {
-		it('should allow forbidden keys by default when no options provided', () => {
+		it('should block forbidden keys by default when no options provided', () => {
 			const base = { a: 1 };
 			const override = { ['__proto__']: { isAdmin: true } };
 			const result = deepMerge(base, override);
 
-			// Without explicit enforceKeyFiltering, it should default to false
-			expect(result).toHaveProperty('__proto__');
+			// Without explicit enforceKeyFiltering, it defaults to true (secure by default)
+			expect(result).toEqual({ a: 1 });
+			expect(({} as any).isAdmin).toBeUndefined();
+		});
+	});
+});
+
+describe('Phase 2.1 Config Schema Defaults', () => {
+	describe('ContextBudgetConfigSchema', () => {
+		it('should have correct default values', () => {
+			const result = ContextBudgetConfigSchema.parse({});
+			expect(result.warn).toBe(0.7);
+			expect(result.critical).toBe(0.9);
+			expect(result.max_injection_tokens).toBe(4000);
+			expect(result.model_limits).toEqual({ default: 128000 });
+			expect(result.target_agents).toEqual(['architect']);
+		});
+
+		it('should allow custom values to override defaults', () => {
+			const customConfig = {
+				warn: 0.8,
+				critical: 0.95,
+				max_injection_tokens: 2000,
+				model_limits: { default: 64000, gpt4: 8192 },
+				target_agents: ['reviewer', 'coder'],
+			};
+			const result = ContextBudgetConfigSchema.parse(customConfig);
+			expect(result.warn).toBe(0.8);
+			expect(result.critical).toBe(0.95);
+			expect(result.max_injection_tokens).toBe(2000);
+			expect(result.model_limits).toEqual({ default: 64000, gpt4: 8192 });
+			expect(result.target_agents).toEqual(['reviewer', 'coder']);
+		});
+
+		it('should reject invalid warn values', () => {
+			expect(() => ContextBudgetConfigSchema.parse({ warn: 1.5 })).toThrow();
+			expect(() => ContextBudgetConfigSchema.parse({ warn: -0.1 })).toThrow();
+		});
+
+		it('should reject invalid critical values', () => {
+			expect(() => ContextBudgetConfigSchema.parse({ critical: 1.5 })).toThrow();
+			expect(() => ContextBudgetConfigSchema.parse({ critical: -0.1 })).toThrow();
+		});
+
+		it('should reject negative max_injection_tokens', () => {
+			expect(() => ContextBudgetConfigSchema.parse({ max_injection_tokens: -1 })).toThrow();
+		});
+	});
+
+	describe('EvidenceConfigSchema', () => {
+		it('should have correct default values', () => {
+			const result = EvidenceConfigSchema.parse({});
+			expect(result.enabled).toBe(true);
+			expect(result.max_age_days).toBe(90);
+			expect(result.max_bundles).toBe(1000);
+			expect(result.auto_archive).toBe(false);
+		});
+
+		it('should allow custom values to override defaults', () => {
+			const customConfig = {
+				enabled: false,
+				max_age_days: 30,
+				max_bundles: 500,
+				auto_archive: true,
+			};
+			const result = EvidenceConfigSchema.parse(customConfig);
+			expect(result.enabled).toBe(false);
+			expect(result.max_age_days).toBe(30);
+			expect(result.max_bundles).toBe(500);
+			expect(result.auto_archive).toBe(true);
+		});
+
+		it('should reject max_age_days less than 1', () => {
+			expect(() => EvidenceConfigSchema.parse({ max_age_days: 0 })).toThrow();
+			expect(() => EvidenceConfigSchema.parse({ max_age_days: -1 })).toThrow();
+		});
+
+		it('should reject max_bundles less than 1', () => {
+			expect(() => EvidenceConfigSchema.parse({ max_bundles: 0 })).toThrow();
+			expect(() => EvidenceConfigSchema.parse({ max_bundles: -1 })).toThrow();
+		});
+	});
+
+	describe('GuardrailsConfigSchema', () => {
+		it('should have correct default values', () => {
+			const result = GuardrailsConfigSchema.parse({});
+			expect(result.enabled).toBe(true);
+			expect(result.max_tool_calls).toBe(200);
+			expect(result.max_duration_minutes).toBe(30);
+			expect(result.max_repetitions).toBe(10);
+			expect(result.max_consecutive_errors).toBe(5);
+			expect(result.warning_threshold).toBe(0.5);
+		});
+
+		it('should allow custom values to override defaults', () => {
+			const customConfig = {
+				enabled: false,
+				max_tool_calls: 100,
+				max_duration_minutes: 15,
+				max_repetitions: 5,
+				max_consecutive_errors: 3,
+				warning_threshold: 0.75,
+			};
+			const result = GuardrailsConfigSchema.parse(customConfig);
+			expect(result.enabled).toBe(false);
+			expect(result.max_tool_calls).toBe(100);
+			expect(result.max_duration_minutes).toBe(15);
+			expect(result.max_repetitions).toBe(5);
+			expect(result.max_consecutive_errors).toBe(3);
+			expect(result.warning_threshold).toBe(0.75);
+		});
+
+		it('should reject max_tool_calls less than 1', () => {
+			expect(() => GuardrailsConfigSchema.parse({ max_tool_calls: 0 })).toThrow();
+			expect(() => GuardrailsConfigSchema.parse({ max_tool_calls: -1 })).toThrow();
+		});
+
+		it('should reject max_duration_minutes less than 1', () => {
+			expect(() => GuardrailsConfigSchema.parse({ max_duration_minutes: 0 })).toThrow();
+			expect(() => GuardrailsConfigSchema.parse({ max_duration_minutes: -1 })).toThrow();
+		});
+
+		it('should reject max_repetitions less than 1', () => {
+			expect(() => GuardrailsConfigSchema.parse({ max_repetitions: 0 })).toThrow();
+			expect(() => GuardrailsConfigSchema.parse({ max_repetitions: -1 })).toThrow();
+		});
+
+		it('should reject max_consecutive_errors less than 1', () => {
+			expect(() => GuardrailsConfigSchema.parse({ max_consecutive_errors: 0 })).toThrow();
+			expect(() => GuardrailsConfigSchema.parse({ max_consecutive_errors: -1 })).toThrow();
+		});
+
+		it('should reject invalid warning_threshold values', () => {
+			expect(() => GuardrailsConfigSchema.parse({ warning_threshold: 1.5 })).toThrow();
+			expect(() => GuardrailsConfigSchema.parse({ warning_threshold: -0.1 })).toThrow();
+		});
+	});
+
+	describe('HooksConfigSchema', () => {
+		it('should accept empty object', () => {
+			const result = HooksConfigSchema.parse({});
+			expect(result).toEqual({});
+		});
+
+		it('should accept pre_agent hook', () => {
+			const result = HooksConfigSchema.parse({ pre_agent: 'pre-agent-hook.ts' });
+			expect(result.pre_agent).toBe('pre-agent-hook.ts');
+			expect(result.post_agent).toBeUndefined();
+		});
+
+		it('should accept post_agent hook', () => {
+			const result = HooksConfigSchema.parse({ post_agent: 'post-agent-hook.ts' });
+			expect(result.pre_agent).toBeUndefined();
+			expect(result.post_agent).toBe('post-agent-hook.ts');
+		});
+
+		it('should accept both hooks', () => {
+			const result = HooksConfigSchema.parse({
+				pre_agent: 'pre.ts',
+				post_agent: 'post.ts',
+			});
+			expect(result.pre_agent).toBe('pre.ts');
+			expect(result.post_agent).toBe('post.ts');
+		});
+	});
+
+	describe('PluginConfigSchema', () => {
+		it('should have correct defaults for all new sections', () => {
+			const result = PluginConfigSchema.parse({});
+			expect(result.context_budget).toBeDefined();
+			expect(result.context_budget.warn).toBe(0.7);
+			expect(result.context_budget.critical).toBe(0.9);
+			expect(result.context_budget.target_agents).toEqual(['architect']);
+
+			expect(result.evidence).toBeDefined();
+			expect(result.evidence.enabled).toBe(true);
+			expect(result.evidence.max_age_days).toBe(90);
+
+			expect(result.guardrails).toBeDefined();
+			expect(result.guardrails.enabled).toBe(true);
+			expect(result.guardrails.max_tool_calls).toBe(200);
+
+			expect(result.hooks).toBeUndefined();
+		});
+
+		it('should merge context_budget with defaults', () => {
+			const result = PluginConfigSchema.parse({
+				context_budget: { enabled: true, warn: 0.8 },
+			});
+			expect(result.context_budget.warn).toBe(0.8);
+			expect(result.context_budget.critical).toBe(0.9);
+			expect(result.context_budget.target_agents).toEqual(['architect']);
+		});
+
+		it('should merge evidence with defaults', () => {
+			const result = PluginConfigSchema.parse({
+				evidence: { max_age_days: 60 },
+			});
+			expect(result.evidence.enabled).toBe(true);
+			expect(result.evidence.max_age_days).toBe(60);
+			expect(result.evidence.max_bundles).toBe(1000);
+		});
+
+		it('should merge guardrails with defaults', () => {
+			const result = PluginConfigSchema.parse({
+				guardrails: { max_tool_calls: 150 },
+			});
+			expect(result.guardrails.enabled).toBe(true);
+			expect(result.guardrails.max_tool_calls).toBe(150);
+			expect(result.guardrails.max_duration_minutes).toBe(30);
+		});
+	});
+});
+
+describe('Phase 2.1 Deep Merge Configuration Sections', () => {
+	describe('context_budget deep merge', () => {
+		it('should merge context_budget with defaults', () => {
+			const base = getContextBudgetDefaults();
+			const override = { warn: 0.8 } as Partial<ContextBudgetConfig>;
+			const result = deepMerge(base, override as ContextBudgetConfig);
+
+			expect(result?.warn).toBe(0.8);
+			expect(result?.critical).toBe(0.9);
+			expect(result?.max_injection_tokens).toBe(4000);
+			expect(result?.target_agents).toEqual(['architect']);
+		});
+
+		it('should override target_agents array', () => {
+			const base = getContextBudgetDefaults();
+			const override = { target_agents: ['reviewer', 'coder'] } as Partial<ContextBudgetConfig>;
+			const result = deepMerge(base, override as ContextBudgetConfig);
+
+			expect(result?.target_agents).toEqual(['reviewer', 'coder']);
+		});
+
+		it('should merge model_limits object', () => {
+			const base = getContextBudgetDefaults();
+			const override = { model_limits: { gpt4: 8192 } } as Partial<ContextBudgetConfig>;
+			const result = deepMerge(base, override as ContextBudgetConfig);
+
+			expect(result?.model_limits).toEqual({ default: 128000, gpt4: 8192 });
+		});
+	});
+
+	describe('evidence deep merge', () => {
+		it('should merge evidence with defaults', () => {
+			const base = getEvidenceDefaults();
+			const override = { enabled: false } as Partial<EvidenceConfig>;
+			const result = deepMerge(base, override as EvidenceConfig);
+
+			expect(result?.enabled).toBe(false);
+			expect(result?.max_age_days).toBe(90);
+			expect(result?.max_bundles).toBe(1000);
+			expect(result?.auto_archive).toBe(false);
+		});
+	});
+
+	describe('guardrails deep merge', () => {
+		it('should merge guardrails with defaults', () => {
+			const base = getGuardrailsDefaults();
+			const override = { max_tool_calls: 100 } as Partial<GuardrailsConfig>;
+			const result = deepMerge(base, override as GuardrailsConfig);
+
+			expect(result?.max_tool_calls).toBe(100);
+			expect(result?.max_duration_minutes).toBe(30);
+			expect(result?.warning_threshold).toBe(0.5);
+		});
+	});
+
+	describe('hooks deep merge', () => {
+		it('should merge hooks with defaults', () => {
+			const base = getHooksDefaults();
+			const override = { pre_agent: 'pre-hook.ts' } as HooksConfig;
+			const result = deepMerge(base, override);
+
+			expect(result?.pre_agent).toBe('pre-hook.ts');
+			expect(result?.post_agent).toBeUndefined();
+		});
+
+		it('should merge both hook types', () => {
+			const base = { pre_agent: 'old-pre.ts' } as HooksConfig;
+			const override = { post_agent: 'post.ts' } as HooksConfig;
+			const result = deepMerge(base, override);
+
+			expect(result?.pre_agent).toBe('old-pre.ts');
+			expect(result?.post_agent).toBe('post.ts');
+		});
+	});
+
+	describe('default getter functions', () => {
+		it('getContextBudgetDefaults should return correct defaults', () => {
+			const defaults = getContextBudgetDefaults();
+			expect(defaults.warn).toBe(0.7);
+			expect(defaults.critical).toBe(0.9);
+			expect(defaults.max_injection_tokens).toBe(4000);
+			expect(defaults.model_limits).toEqual({ default: 128000 });
+			expect(defaults.target_agents).toEqual(['architect']);
+		});
+
+		it('getEvidenceDefaults should return correct defaults', () => {
+			const defaults = getEvidenceDefaults();
+			expect(defaults.enabled).toBe(true);
+			expect(defaults.max_age_days).toBe(90);
+			expect(defaults.max_bundles).toBe(1000);
+			expect(defaults.auto_archive).toBe(false);
+		});
+
+		it('getGuardrailsDefaults should return correct defaults', () => {
+			const defaults = getGuardrailsDefaults();
+			expect(defaults.enabled).toBe(true);
+			expect(defaults.max_tool_calls).toBe(200);
+			expect(defaults.max_duration_minutes).toBe(30);
+			expect(defaults.max_repetitions).toBe(10);
+			expect(defaults.max_consecutive_errors).toBe(5);
+			expect(defaults.warning_threshold).toBe(0.5);
+		});
+
+		it('getHooksDefaults should return empty object', () => {
+			const defaults = getHooksDefaults();
+			expect(defaults).toEqual({});
 		});
 	});
 });

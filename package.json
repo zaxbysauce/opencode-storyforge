@@ -1,6 +1,6 @@
 {
-	"name": "opencode-storyforge",
-	"version": "1.1.0",
+ "name": "opencode-writer-swarm",
+  "version": "1.2.0",
  "description": "Editorial swarm plugin for OpenCode - professional writing workflow with editor-in-chief, writers, and reviewers",
  "main": "dist/index.js",
  "types": "dist/index.d.ts",
@@ -39,14 +39,15 @@
  "dependencies": {
   "@opencode-ai/plugin": "^1.1.53",
   "@opencode-ai/sdk": "^1.1.53",
+  "mdast-util-from-markdown": "^2.0.2",
+  "mdast-util-gfm": "^3.1.0",
   "micromark-extension-gfm": "^3.0.0",
-  "zod": "^4.1.8",
-  "mdast-util-from-markdown": "^1.0.0",
-  "mdast-util-gfm": "^1.0.0",
-  "unist-util-visit": "^4.1.0"
+  "unist-util-visit": "^5.1.0",
+  "zod": "^4.1.8"
  },
  "devDependencies": {
   "@biomejs/biome": "2.3.14",
+  "@types/mdast": "^4.0.4",
   "bun-types": "latest",
   "typescript": "^5.7.3"
  }

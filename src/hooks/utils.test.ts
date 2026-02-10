@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { safeHook, composeHandlers } from './utils';
+import { safeHook, composeHandlers, validateWriterPath } from './utils';
 import { SwarmError } from '../utils';
 
 describe('safeHook', () => {
@@ -185,4 +185,48 @@ describe('composeHandlers', () => {
 	});
 });
 
+describe('validateWriterPath', () => {
+	it('rejects filename with colon (ADS protection)', async () => {
+		await expect(validateWriterPath(process.cwd(), 'test:ads.txt')).rejects.toThrow(
+			'Invalid filename: contains invalid character ":"'
+		);
+	});
+
+	it('rejects filename with null byte', async () => {
+		await expect(validateWriterPath(process.cwd(), 'test\x00.txt')).rejects.toThrow(
+			'Invalid filename: contains null bytes'
+		);
+	});
+
+	it('rejects UNC path (//server/share)', async () => {
+		await expect(validateWriterPath(process.cwd(), '//server/share/file.txt')).rejects.toThrow(
+			'Invalid filename: UNC paths are not allowed'
+		);
+	});
+
+	it('rejects UNC path (\\\\server\\share)', async () => {
+		await expect(validateWriterPath(process.cwd(), '\\\\server\\share\\file.txt')).rejects.toThrow(
+			'Invalid filename: UNC paths are not allowed'
+		);
+	});
+
+	it('rejects path traversal (../escape)', async () => {
+		await expect(validateWriterPath(process.cwd(), '../outside.txt')).rejects.toThrow(
+			'Invalid filename: path escapes .writer directory'
+		);
+	});
+
+	it('accepts valid filename', async () => {
+		const result = await validateWriterPath(process.cwd(), 'valid-file.md');
+		expect(result).toBeTruthy();
+		expect(result).toContain('valid-file.md');
+	});
+
+	it('accepts valid nested filename (subdir/file.md)', async () => {
+		const result = await validateWriterPath(process.cwd(), 'subdir/file.md');
+		expect(result).toBeTruthy();
+		expect(result).toContain('subdir');
+		expect(result).toContain('file.md');
+	});
+});
 

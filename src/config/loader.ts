@@ -1,11 +1,62 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { type PluginConfig, PluginConfigSchema, getConfigValidationEnabled } from './schema';
+import { fileURLToPath } from 'node:url';
+import {
+	type PluginConfig,
+	PluginConfigSchema,
+	getConfigValidationEnabled,
+	getContextBudgetDefaults,
+	getEvidenceDefaults,
+	getGuardrailsDefaults,
+	getHooksDefaults,
+} from './schema';
+import { warn } from '../utils/logger';
+import { swarmState } from '../state';
 
+const __filename = fileURLToPath(import.meta.url);
+const __moduleDir = path.dirname(__filename);
+
+/**
+ * Resolve the package root directory by searching upward for the prompts/ directory.
+ * Works from both source (src/config/) and bundled (dist/) locations.
+ */
+function resolvePackageRoot(): string {
+	let dir = __moduleDir;
+	// Walk up at most 3 levels to find the directory containing prompts/
+	for (let i = 0; i < 3; i++) {
+		if (fs.existsSync(path.join(dir, 'prompts'))) {
+			return dir;
+		}
+		const parent = path.dirname(dir);
+		if (parent === dir) break; // reached filesystem root
+		dir = parent;
+	}
+	// Fallback: assume source layout (2 levels up from src/config/)
+	return path.join(__moduleDir, '..', '..');
+}
+
+const PACKAGE_ROOT = resolvePackageRoot();
 const CONFIG_FILENAME = 'opencode-writer-swarm.json';
 
 export const MAX_CONFIG_FILE_BYTES = 102_400;
+
+function clonePluginConfig(config: PluginConfig): PluginConfig {
+	return JSON.parse(JSON.stringify(config));
+}
+
+function createDefaultPluginConfig(): PluginConfig {
+	return {
+		qa_retry_limit: 3,
+		file_retry_enabled: true,
+		max_file_operation_retries: 3,
+		config_validation_enabled: true,
+		context_budget: getContextBudgetDefaults(),
+		evidence: getEvidenceDefaults(),
+		guardrails: getGuardrailsDefaults(),
+		hooks: getHooksDefaults(),
+	};
+}
 
 /**
  * Structured error log entry for config loading failures.
@@ -31,21 +82,15 @@ export function logConfigLoadError(filePath: string, error: unknown): void {
 		message: error instanceof Error ? error.message : String(error),
 	};
 
-	console.warn(
-		`[opencode-writer-swarm] Config load error: ${JSON.stringify(logEntry)}`,
-	);
+	warn('Config load error', logEntry);
 }
 
-/**
- * Get the user's configuration directory (XDG Base Directory spec).
- */
+/** XDG-compliant user config directory (~/.config or $XDG_CONFIG_HOME). */
 function getUserConfigDir(): string {
 	return process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
 }
 
-/**
- * Load and validate config from a specific file path.
- */
+/** Load and validate config JSON from path, returning null on any failure. */
 function loadConfigFromPath(configPath: string): PluginConfig | null {
 	try {
 		// Check file size before reading
@@ -53,9 +98,10 @@ function loadConfigFromPath(configPath: string): PluginConfig | null {
 
 		const stats = fs.statSync(configPath);
 		if (stats.size > MAX_CONFIG_FILE_BYTES) {
-			console.warn(
-				`[opencode-writer-swarm] Config file too large (max 100 KB): ${configPath}`,
-			);
+			warn('Config file too large', {
+				path: configPath,
+				maxBytes: MAX_CONFIG_FILE_BYTES,
+			});
 			return null;
 		}
 
@@ -64,8 +110,10 @@ function loadConfigFromPath(configPath: string): PluginConfig | null {
 		const result = PluginConfigSchema.safeParse(rawConfig);
 
 		if (!result.success) {
-			console.warn(`[opencode-writer-swarm] Invalid config at ${configPath}:`);
-			console.warn(result.error.format());
+			warn('Invalid config document', {
+				path: configPath,
+				errors: result.error.format(),
+			});
 			return null;
 		}
 
@@ -114,7 +162,7 @@ export function deepMerge<T>(
 		return override;
 	}
 
-	const { enforceKeyFiltering = false } = options;
+	const { enforceKeyFiltering = true } = options;
 	const result = { ...base } as any;
 
 	for (const key of Object.keys(override)) {
@@ -148,26 +196,55 @@ export function loadPluginConfig(directory: string): PluginConfig {
 
 	const projectConfigPath = path.join(directory, '.opencode', CONFIG_FILENAME);
 
-	let config: PluginConfig = loadConfigFromPath(userConfigPath) ?? {
-		qa_retry_limit: 3,
-		file_retry_enabled: true,
-		max_file_operation_retries: 3,
-		config_validation_enabled: true,
-	};
-
+	const userConfig = loadConfigFromPath(userConfigPath);
 	const projectConfig = loadConfigFromPath(projectConfigPath);
-	if (projectConfig) {
-		// Compute effective config validation enabled flag
-		const configValidationEnabled = getConfigValidationEnabled(projectConfig);
 
+	let config: PluginConfig;
+
+	if (userConfig) {
+		config = clonePluginConfig(userConfig);
+	} else if (swarmState.lastValidConfig) {
+		warn('Falling back to last valid plugin config (project config will still apply)', {
+			source: 'lastValidConfig',
+		});
+		config = clonePluginConfig(swarmState.lastValidConfig);
+	} else {
+		warn('Falling back to default plugin config', { source: 'defaults' });
+		config = createDefaultPluginConfig();
+	}
+
+	if (projectConfig) {
 		config = {
 			...config,
 			...projectConfig,
 			agents: deepMerge(config.agents, projectConfig.agents, {
-				enforceKeyFiltering: configValidationEnabled,
+				enforceKeyFiltering: getConfigValidationEnabled(projectConfig),
 			}),
+			// Deep merge context_budget, evidence, guardrails, and hooks
+			context_budget: deepMerge(
+				config.context_budget ?? getContextBudgetDefaults(),
+				projectConfig.context_budget,
+				{ enforceKeyFiltering: getConfigValidationEnabled(projectConfig) },
+			) ?? getContextBudgetDefaults(),
+			evidence: deepMerge(
+				config.evidence ?? getEvidenceDefaults(),
+				projectConfig.evidence,
+				{ enforceKeyFiltering: getConfigValidationEnabled(projectConfig) },
+			) ?? getEvidenceDefaults(),
+			guardrails: deepMerge(
+				config.guardrails ?? getGuardrailsDefaults(),
+				projectConfig.guardrails,
+				{ enforceKeyFiltering: getConfigValidationEnabled(projectConfig) },
+			) ?? getGuardrailsDefaults(),
+			hooks: deepMerge(
+				config.hooks ?? getHooksDefaults(),
+				projectConfig.hooks,
+				{ enforceKeyFiltering: getConfigValidationEnabled(projectConfig) },
+			) ?? getHooksDefaults(),
 		};
 	}
+
+	swarmState.lastValidConfig = clonePluginConfig(config);
 
 	return config;
 }
@@ -176,13 +253,13 @@ export function loadPluginConfig(directory: string): PluginConfig {
  * Load prompt file from prompts/ directory
  */
 export function loadPrompt(name: string): string {
-	const promptPath = path.join(__dirname, '..', '..', 'prompts', `${name}.md`);
+	const promptPath = path.join(PACKAGE_ROOT, 'prompts', `${name}.md`);
 	try {
 		return fs.readFileSync(promptPath, 'utf-8');
 	} catch (error) {
-		console.warn(`[opencode-writer-swarm] Error reading prompt ${name}:`, error);
+		warn('Error reading prompt file', { name, path: promptPath, error });
 		// Try with underscore instead of hyphen for backward compatibility
-		const altPath = path.join(__dirname, '..', '..', 'prompts', `${name.replace(/-/g, '_')}.md`);
+		const altPath = path.join(PACKAGE_ROOT, 'prompts', `${name.replace(/-/g, '_')}.md`);
 		try {
 			return fs.readFileSync(altPath, 'utf-8');
 		} catch {
@@ -195,14 +272,11 @@ export function loadPrompt(name: string): string {
  * Load reference file from references/ directory
  */
 export function loadReference(name: string): string {
-	const refPath = path.join(__dirname, '..', '..', 'references', `${name}.md`);
+	const refPath = path.join(PACKAGE_ROOT, 'references', `${name}.md`);
 	try {
 		return fs.readFileSync(refPath, 'utf-8');
 	} catch (error) {
-		console.warn(
-			`[opencode-writer-swarm] Error reading reference ${name}:`,
-			error,
-		);
+		warn('Error reading reference file', { name, path: refPath, error });
 		return '';
 	}
 }

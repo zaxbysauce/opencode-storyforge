@@ -9,9 +9,7 @@ import { AGENT_TEMPLATES } from './definitions';
 
 export type { AgentDefinition } from './types';
 
-/**
- * Get the model for an agent, checking config overrides then defaults.
- */
+/** Resolve model: config override → default constant. */
 function getModelForAgent(
 	agentName: string,
 	config?: PluginConfig,
@@ -24,9 +22,7 @@ function getModelForAgent(
 	return DEFAULT_MODELS[agentName] ?? DEFAULT_MODELS.default;
 }
 
-/**
- * Check if an agent is disabled in config
- */
+/** Check if agent is disabled via config. */
 function isAgentDisabled(
 	agentName: string,
 	config?: PluginConfig,
@@ -34,9 +30,7 @@ function isAgentDisabled(
 	return config?.agents?.[agentName]?.disabled === true;
 }
 
-/**
- * Get temperature override for an agent
- */
+/** Get temperature override from config, if any. */
 function getTemperatureOverride(
 	agentName: string,
 	config?: PluginConfig,
@@ -44,16 +38,17 @@ function getTemperatureOverride(
 	return config?.agents?.[agentName]?.temperature;
 }
 
-/**
- * Apply config overrides to an agent definition
- */
+/** Apply temperature override to agent definition. */
 function applyOverrides(
 	agent: AgentDefinition,
 	config?: PluginConfig,
 ): AgentDefinition {
 	const tempOverride = getTemperatureOverride(agent.name, config);
 	if (tempOverride !== undefined) {
-		agent.config.temperature = tempOverride;
+		return {
+			...agent,
+			config: { ...agent.config, temperature: tempOverride },
+		};
 	}
 	return agent;
 }

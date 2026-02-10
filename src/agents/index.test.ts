@@ -14,6 +14,28 @@ describe('createAgents', () => {
 			agents: {
 				writer: { model: 'custom-model', temperature: 0.8 },
 			},
+		context_budget: {
+			enabled: true,
+			warn: 0.7,
+				critical: 0.9,
+				max_injection_tokens: 4000,
+				model_limits: { default: 128000 },
+				target_agents: ['architect'],
+			},
+			evidence: {
+				enabled: true,
+				max_age_days: 90,
+				max_bundles: 1000,
+				auto_archive: false,
+			},
+			guardrails: {
+				enabled: true,
+				max_tool_calls: 200,
+				max_duration_minutes: 30,
+				max_repetitions: 10,
+				max_consecutive_errors: 5,
+				warning_threshold: 0.5,
+			},
 		};
 	});
 
@@ -198,7 +220,35 @@ describe('createAgents', () => {
 		});
 
 		it('should handle config with no agent overrides', () => {
-			const emptyOverrides = { qa_retry_limit: 3, file_retry_enabled: true, max_file_operation_retries: 3, agents: {} };
+		const emptyOverrides = {
+				qa_retry_limit: 3,
+				file_retry_enabled: true,
+				max_file_operation_retries: 3,
+				config_validation_enabled: true,
+				agents: {},
+			context_budget: {
+				enabled: true,
+					warn: 0.7,
+					critical: 0.9,
+					max_injection_tokens: 4000,
+					model_limits: { default: 128000 },
+					target_agents: ['architect'],
+				},
+				evidence: {
+					enabled: true,
+					max_age_days: 90,
+					max_bundles: 1000,
+					auto_archive: false,
+				},
+				guardrails: {
+					enabled: true,
+					max_tool_calls: 200,
+					max_duration_minutes: 30,
+					max_repetitions: 10,
+					max_consecutive_errors: 5,
+					warning_threshold: 0.5,
+				},
+			};
 			const agents = createAgents(emptyOverrides as PluginConfig);
 
 			expect(agents).toHaveLength(7);
@@ -206,7 +256,35 @@ describe('createAgents', () => {
 		});
 
 		it('should handle config with empty agents object', () => {
-			const emptyAgents = { qa_retry_limit: 3, file_retry_enabled: true, max_file_operation_retries: 3, agents: undefined };
+			const emptyAgents = {
+				qa_retry_limit: 3,
+				file_retry_enabled: true,
+				max_file_operation_retries: 3,
+				config_validation_enabled: true,
+				agents: undefined,
+			context_budget: {
+				enabled: true,
+					warn: 0.7,
+					critical: 0.9,
+					max_injection_tokens: 4000,
+					model_limits: { default: 128000 },
+					target_agents: ['architect'],
+				},
+				evidence: {
+					enabled: true,
+					max_age_days: 90,
+					max_bundles: 1000,
+					auto_archive: false,
+				},
+				guardrails: {
+					enabled: true,
+					max_tool_calls: 200,
+					max_duration_minutes: 30,
+					max_repetitions: 10,
+					max_consecutive_errors: 5,
+					warning_threshold: 0.5,
+				},
+			};
 			const agents = createAgents(emptyAgents as PluginConfig);
 
 			expect(agents).toHaveLength(7);

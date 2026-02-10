@@ -1,5 +1,5 @@
 import { describe, expect, test, afterAll, beforeAll, beforeEach, afterEach } from "bun:test";
-import { read_writer_file, write_writer_file, list_writer_files } from "../../src/tools/file-manager";
+import { createReadWriterFile, createWriteWriterFile, createListWriterFiles } from "../../src/tools/file-manager";
 import * as fs from "node:fs/promises";
 import * as nodeFs from "node:fs";
 import * as path from "node:path";
@@ -7,6 +7,10 @@ import * as path from "node:path";
 describe("Writer Tools", () => {
     const testDir = path.join(process.cwd(), ".writer");
     const originalEnv = { ...process.env };
+
+    const read_writer_file = createReadWriterFile(process.cwd());
+    const write_writer_file = createWriteWriterFile(process.cwd());
+    const list_writer_files = createListWriterFiles(process.cwd());
 
     beforeAll(async () => {
         // Ensure clean state

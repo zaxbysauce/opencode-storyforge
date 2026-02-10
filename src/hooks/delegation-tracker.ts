@@ -1,5 +1,5 @@
 import type { PluginConfig } from '../config';
-import { swarmState, type DelegationEntry } from '../state';
+import { swarmState, type DelegationEntry, enforceSessionLimit } from '../state';
 
 export function createDelegationTrackerHook(
 	config: PluginConfig,
@@ -25,18 +25,15 @@ export function createDelegationTrackerHook(
 				timestamp: Date.now(),
 			};
 
-			if (!swarmState.delegationChains.has(input.sessionID)) {
+		if (!swarmState.delegationChains.has(input.sessionID)) {
 				swarmState.delegationChains.set(input.sessionID, []);
 			}
 
-			const chain = swarmState.delegationChains.get(input.sessionID);
-			if (chain) {
-				chain.push(entry);
-			} else {
-				swarmState.delegationChains.set(input.sessionID, [entry]);
-			}
+			const chain = swarmState.delegationChains.get(input.sessionID)!;
+			chain.push(entry);
 
 			swarmState.pendingEvents++;
+			enforceSessionLimit();
 		}
 	};
 }

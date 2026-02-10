@@ -9,8 +9,7 @@ import {
 	isFileValidationEnabled 
 } from '../hooks/utils';
 import { MAX_FILE_SIZE, MAX_DIRECTORY_DEPTH } from '../config/constants';
-import { getFileRetryEnabled, getMaxFileRetries } from '../config/schema';
-import { loadPluginConfig } from '../config';
+import { getFileRetryEnabled, getMaxFileRetries, type PluginConfig } from '../config/schema';
 
 // Retryable error codes
 const RETRYABLE_ERROR_CODES = ['EBUSY', 'EAGAIN', 'EMFILE'];
@@ -81,126 +80,127 @@ export async function writeFileWithRetry(
 		}
 	}
 
-	// Should never reach here, but TypeScript needs it
 	throw lastError;
 }
 
 /**
- * Read a file from the .writer/ directory.
+ * Create a tool to read a file from the .writer/ directory.
  */
-export const read_writer_file: ToolDefinition = tool({
-	description: 'Read a file from the .writer/ directory.',
-	args: {
-		filename: tool.schema
-			.string()
-			.describe('Relative path to the file inside .writer/ (e.g., "brief.md", "drafts/draft-1.md")'),
-	},
-	execute: async ({ filename }) => {
-		try {
-			const directory = process.cwd();
-			const resolvedPath = validateWriterPath(directory, filename);
-			
-			// Check if file exists
+export function createReadWriterFile(directory: string): ToolDefinition {
+	return tool({
+		description: 'Read a file from the .writer/ directory.',
+		args: {
+			filename: tool.schema
+				.string()
+				.describe('Relative path to the file inside .writer/ (e.g., "brief.md", "drafts/draft-1.md")'),
+		},
+		execute: async ({ filename }) => {
 			try {
-				await fs.access(resolvedPath);
-			} catch {
-				return `File not found: ${filename}`;
+				const resolvedPath = await validateWriterPath(directory, filename);
+
+				// Check if file exists
+				try {
+					await fs.access(resolvedPath);
+				} catch {
+					return `File not found: ${filename}`;
+				}
+
+				// Check file size limit before reading
+				await checkFileSizeLimit(resolvedPath);
+
+				const content = await fs.readFile(resolvedPath, 'utf-8');
+				return content;
+			} catch (error) {
+				return `Error reading file: ${error instanceof Error ? error.message : String(error)}`;
 			}
-
-			// Check file size limit before reading
-			checkFileSizeLimit(resolvedPath);
-
-			const content = await fs.readFile(resolvedPath, 'utf-8');
-			return content;
-		} catch (error) {
-			return `Error reading file: ${error instanceof Error ? error.message : String(error)}`;
-		}
-	},
-});
+		},
+	});
+}
 
 /**
- * Write content to a file in the .writer/ directory. Overwrites if exists.
+ * Create a tool to write content to a file in the .writer/ directory. Overwrites if exists.
  */
-export const write_writer_file: ToolDefinition = tool({
-	description: 'Write content to a file in the .writer/ directory. Overwrites if exists.',
-	args: {
-		filename: tool.schema
-			.string()
-			.describe('Relative path to the file inside .writer/'),
-		content: tool.schema
-			.string()
-			.describe('The content to write'),
-	},
-	execute: async ({ filename, content }) => {
-		try {
-			const directory = process.cwd();
-			const resolvedPath = validateWriterPath(directory, filename);
-			
-			// Ensure directory exists
-			await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-			
-			const pluginConfig = loadPluginConfig(directory);
-			const retryEnabled = getFileRetryEnabled(pluginConfig);
-			const maxRetries = getMaxFileRetries(pluginConfig);
-			
-			// Use retry logic for file writes
-			await writeFileWithRetry(resolvedPath, content, { encoding: 'utf-8' }, undefined, retryEnabled, maxRetries);
-			return `Successfully wrote to ${filename}`;
-		} catch (error) {
-			return `Error writing file: ${error instanceof Error ? error.message : String(error)}`;
-		}
-	},
-});
+export function createWriteWriterFile(directory: string, config?: PluginConfig): ToolDefinition {
+	return tool({
+		description: 'Write content to a file in the .writer/ directory. Overwrites if exists.',
+		args: {
+			filename: tool.schema
+				.string()
+				.describe('Relative path to the file inside .writer/'),
+			content: tool.schema
+				.string()
+				.describe('The content to write'),
+		},
+		execute: async ({ filename, content }) => {
+			try {
+				const resolvedPath = await validateWriterPath(directory, filename);
+
+				// Ensure directory exists
+				await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+
+				const retryEnabled = getFileRetryEnabled(config);
+				const maxRetries = getMaxFileRetries(config);
+
+				// Use retry logic for file writes
+				await writeFileWithRetry(resolvedPath, content, { encoding: 'utf-8' }, undefined, retryEnabled, maxRetries);
+				return `Successfully wrote to ${filename}`;
+			} catch (error) {
+				return `Error writing file: ${error instanceof Error ? error.message : String(error)}`;
+			}
+		},
+	});
+}
 
 /**
- * List all files in the .writer/ directory recursively.
+ * Create a tool to list all files in the .writer/ directory recursively.
  */
-export const list_writer_files: ToolDefinition = tool({
-	description: 'List all files in the .writer/ directory recursively.',
-	args: {},
-	execute: async () => {
-		try {
-			const directory = process.cwd();
-			const writerDir = path.join(directory, '.writer');
-			
-			// Check if directory exists
+export function createListWriterFiles(directory: string): ToolDefinition {
+	return tool({
+		description: 'List all files in the .writer/ directory recursively.',
+		args: {},
+		execute: async () => {
 			try {
-				await fs.access(writerDir);
-			} catch {
-				return 'No .writer directory found.';
-			}
+				const writerDir = path.join(directory, '.writer');
 
-			const files: string[] = [];
-			
-			async function scan(dir: string, relative: string, depth: number = 0) {
-				// Check directory depth limit
-				checkDirectoryDepth(depth);
+				// Check if directory exists
+				try {
+					await fs.access(writerDir);
+				} catch {
+					return 'No .writer directory found.';
+				}
 
-				const entries = await fs.readdir(dir, { withFileTypes: true });
-				for (const entry of entries) {
-					const fullPath = path.join(dir, entry.name);
-					const relPath = path.join(relative, entry.name);
+				const files: string[] = [];
 
-					// Skip symlinks if validation is enabled
-					if (isFileValidationEnabled() && isSymlink(fullPath)) {
-						continue;
-					}
+				async function scan(dir: string, relative: string, depth: number = 0) {
+					// Check directory depth limit
+					checkDirectoryDepth(depth);
 
-					if (entry.isDirectory()) {
-						await scan(fullPath, relPath, depth + 1);
-					} else {
-						files.push(relPath);
+					const entries = await fs.readdir(dir, { withFileTypes: true });
+					for (const entry of entries) {
+						const fullPath = path.join(dir, entry.name);
+						const relPath = path.join(relative, entry.name);
+
+						// Skip symlinks if validation is enabled
+						if (isFileValidationEnabled() && await isSymlink(fullPath)) {
+							continue;
+						}
+
+						if (entry.isDirectory()) {
+							await scan(fullPath, relPath, depth + 1);
+						} else {
+							files.push(relPath);
+						}
 					}
 				}
-			}
 
-			await scan(writerDir, '', 0);
-			return files.length > 0 ? files.join('\n') : 'No files found in .writer directory.';
-		} catch (error) {
-			return `Error listing files: ${error instanceof Error ? error.message : String(error)}`;
-		}
-	},
-});
+				await scan(writerDir, '', 0);
+				return files.length > 0 ? files.join('\n') : 'No files found in .writer directory.';
+			} catch (error) {
+				return `Error listing files: ${error instanceof Error ? error.message : String(error)}`;
+			}
+		},
+	});
+}
 
 // Export constants for external use
 export { MAX_FILE_SIZE, MAX_DIRECTORY_DEPTH };

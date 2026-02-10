@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
 import { SwarmError } from '../utils';
 import { MAX_FILE_SIZE, MAX_DIRECTORY_DEPTH } from '../config/constants';
 
@@ -95,30 +95,45 @@ function getMaxScanDepth(): number {
 	return MAX_DIRECTORY_DEPTH;
 }
 
-export function validateWriterPath(directory: string, filename: string): string {
+async function validateSubdirectoryPath(
+	directory: string,
+	filename: string,
+	baseDirName: string,
+): Promise<string> {
 	// Reject null bytes
 	if (/[\0]/.test(filename)) {
 		throw new Error('Invalid filename: contains null bytes');
 	}
 
+	// Reject Windows Alternate Data Streams (colon in filename)
+	// Drive letters are not valid in relative filenames
+	if (filename.includes(':')) {
+		throw new Error('Invalid filename: contains invalid character ":"');
+	}
+
+	// Reject UNC paths and extended-length paths
+	if (/^[\\/]{2}/.test(filename)) {
+		throw new Error('Invalid filename: UNC paths are not allowed');
+	}
+
 	// Resolve the base directory and the requested file
-	const baseDir = path.resolve(directory, '.writer');
+	const baseDir = path.resolve(directory, baseDirName);
 
 	// Use path.join to ensure filename is treated as relative, then resolve
 	const resolved = path.resolve(path.join(baseDir, filename));
 
-	// Check that the resolved path is within the .writer directory
+	// Check that the resolved path is within the base directory
 	if (process.platform === 'win32') {
 		// On Windows, do case-insensitive comparison
 		if (
 			!resolved.toLowerCase().startsWith((baseDir + path.sep).toLowerCase())
 		) {
-			throw new Error('Invalid filename: path escapes .writer directory');
+			throw new Error(`Invalid filename: path escapes ${baseDirName} directory`);
 		}
 	} else {
 		// On other platforms, do case-sensitive comparison
 		if (!resolved.startsWith(baseDir + path.sep)) {
-			throw new Error('Invalid filename: path escapes .writer directory');
+			throw new Error(`Invalid filename: path escapes ${baseDirName} directory`);
 		}
 	}
 
@@ -126,27 +141,27 @@ export function validateWriterPath(directory: string, filename: string): string 
 	if (isFileValidationEnabled()) {
 		try {
 			// Use lstat to check if it's a symlink
-			const stats = fs.lstatSync(resolved);
+			const stats = await fsPromises.lstat(resolved);
 			if (stats.isSymbolicLink()) {
 				throw new Error('Invalid filename: symlinks are not allowed');
 			}
 
 			// Also verify the real path doesn't escape the base directory
-			const realPath = fs.realpathSync(resolved);
+			const realPath = await fsPromises.realpath(resolved);
 			if (process.platform === 'win32') {
 				if (!realPath.toLowerCase().startsWith((baseDir + path.sep).toLowerCase())) {
-					throw new Error('Invalid filename: symlink escapes .writer directory');
+					throw new Error(`Invalid filename: symlink escapes ${baseDirName} directory`);
 				}
 			} else {
 				if (!realPath.startsWith(baseDir + path.sep)) {
-					throw new Error('Invalid filename: symlink escapes .writer directory');
+					throw new Error(`Invalid filename: symlink escapes ${baseDirName} directory`);
 				}
 			}
 		} catch (error) {
 			// If the file doesn't exist yet, that's fine - just pass through
 			// Re-throw validation errors
-			if (error instanceof Error && 
-				(error.message.includes('symlinks are not allowed') || 
+			if (error instanceof Error &&
+				(error.message.includes('symlinks are not allowed') ||
 				 error.message.includes('symlink escapes'))) {
 				throw error;
 			}
@@ -157,14 +172,22 @@ export function validateWriterPath(directory: string, filename: string): string 
 	return resolved;
 }
 
+export async function validateWriterPath(directory: string, filename: string): Promise<string> {
+	return validateSubdirectoryPath(directory, filename, '.writer');
+}
+
+export async function validateSwarmPath(directory: string, filename: string): Promise<string> {
+	return validateSubdirectoryPath(directory, filename, '.swarm');
+}
+
 // Check if a file exceeds the size limit
-export function checkFileSizeLimit(filePath: string): void {
+export async function checkFileSizeLimit(filePath: string): Promise<void> {
 	if (!isFileValidationEnabled()) {
 		return;
 	}
 
 	try {
-		const stats = fs.statSync(filePath);
+		const stats = await fsPromises.stat(filePath);
 		if (stats.isFile()) {
 			const maxBytes = getMaxFileBytes();
 			if (stats.size > maxBytes) {
@@ -197,13 +220,13 @@ export function checkDirectoryDepth(currentDepth: number): void {
 }
 
 // Check if a path is a symlink (for directory listing)
-export function isSymlink(filePath: string): boolean {
+export async function isSymlink(filePath: string): Promise<boolean> {
 	if (!isFileValidationEnabled()) {
 		return false;
 	}
 
 	try {
-		const stats = fs.lstatSync(filePath);
+		const stats = await fsPromises.lstat(filePath);
 		return stats.isSymbolicLink();
 	} catch {
 		return false;
@@ -218,11 +241,11 @@ export async function readWriterFileAsync(
 	filename: string,
 ): Promise<string | null> {
 	try {
-		const resolvedPath = validateWriterPath(directory, filename);
+		const resolvedPath = await validateWriterPath(directory, filename);
 		const file = Bun.file(resolvedPath);
 		const exists = await file.exists();
 		if (!exists) return null;
-		
+
 		const content = await file.text();
 		return content;
 	} catch {
@@ -230,35 +253,22 @@ export async function readWriterFileAsync(
 	}
 }
 
-/**
- * Estimates the number of tokens in a text string.
- *
- * **Formula:** `tokenCount ≈ Math.ceil(characterCount × 0.33)`
- *
- * This is based on the general observation that one token corresponds to roughly
- * 3 characters of English text on average. The multiplier of 0.33 (1/3) provides
- * a conservative upper-bound estimate.
- *
- * **Accuracy:**
- * - Expected variance: approximately ±40%
- * - Actual token counts vary significantly based on:
- *   - Language (non-English text often requires more tokens per character)
- *   - Content type (code, technical terms, vs. natural language)
- *   - Tokenizer model (GPT-3/4, Claude, etc. use different tokenization schemes)
- *   - Presence of special characters, whitespace, and punctuation
- *
- * **Recommendation:**
- * Use this function only for rough budget planning and preliminary size estimates.
- * For precise token counting required for API limits or billing, use the actual
- * tokenizer of the target model (e.g., tiktoken for OpenAI models).
- *
- * @param text - The input string to estimate token count for
- * @returns The estimated number of tokens (rounded up), or 0 for empty/null input
- */
-export function estimateTokens(text: string): number {
-	if (!text) {
-		return 0;
-	}
+export async function readSwarmFileAsync(
+	directory: string,
+	filename: string,
+): Promise<string | null> {
+	try {
+		const resolvedPath = await validateSwarmPath(directory, filename);
+		const file = Bun.file(resolvedPath);
+		const exists = await file.exists();
+		if (!exists) return null;
 
-	return Math.ceil(text.length * 0.33);
+		const content = await file.text();
+		return content;
+	} catch {
+		return null;
+	}
 }
+
+
+
