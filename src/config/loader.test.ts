@@ -617,7 +617,7 @@ describe('Phase 2.1 Config Schema Defaults', () => {
 	describe('HooksConfigSchema', () => {
 		it('should accept empty object', () => {
 			const result = HooksConfigSchema.parse({});
-			expect(result).toEqual({});
+			expect(result).toEqual({ compaction: true });
 		});
 
 		it('should accept pre_agent hook', () => {
@@ -793,9 +793,9 @@ describe('Phase 2.1 Deep Merge Configuration Sections', () => {
 			expect(defaults.warning_threshold).toBe(0.5);
 		});
 
-		it('getHooksDefaults should return empty object', () => {
+		it('getHooksDefaults should return defaults with compaction enabled', () => {
 			const defaults = getHooksDefaults();
-			expect(defaults).toEqual({});
+			expect(defaults).toEqual({ compaction: true });
 		});
 	});
 });

@@ -276,6 +276,76 @@ export function extractIncompleteTasks(
 }
 
 /**
+ * Extracts patterns section from context content.
+ */
+export function extractPatterns(
+	contextContent: string,
+	maxChars: number = 500,
+): string | null {
+	if (!contextContent) {
+		return null;
+	}
+
+	// Parse markdown using cached AST
+	const tree = parseMarkdownWithCache(contextContent);
+
+	const patternsText: string[] = [];
+	let inPatternsSection = false;
+
+	visit(tree, (node) => {
+		// Check for headings
+		if (node.type === 'heading') {
+			const heading = node as Heading;
+			const text = heading.children
+				.map((child) => (child.type === 'text' ? (child as Text).value : ''))
+				.join('');
+
+			const normalizedText = text.toLowerCase();
+			if (normalizedText === 'patterns') {
+				inPatternsSection = true;
+			} else if (inPatternsSection && heading.depth === 2) {
+				// Found a new section after the patterns section
+				inPatternsSection = false;
+			}
+		}
+
+		// Check for list items in the patterns section
+		if (inPatternsSection && node.type === 'listItem') {
+			const listItem = node as ListItem;
+
+			// Extract text from paragraph children
+			const text = listItem.children
+				.map((child) => {
+					if (child.type === 'paragraph') {
+						return child.children
+							.map((c) => (c.type === 'text' ? (c as Text).value : ''))
+							.join('');
+					}
+					return '';
+				})
+				.join(' ')
+				.trim();
+
+			if (text) {
+				patternsText.push(text);
+			}
+		}
+	});
+
+	if (patternsText.length === 0) {
+		return null;
+	}
+
+	const joined = patternsText.join('\n');
+	const trimmed = joined.trim();
+	if (trimmed.length <= maxChars) {
+		return trimmed;
+	}
+
+	return `${trimmed.slice(0, maxChars)}...`;
+}
+
+/**
  * Extracts decisions section from context content.
  */
 export function extractDecisions(

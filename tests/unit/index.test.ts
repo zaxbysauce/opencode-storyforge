@@ -138,7 +138,7 @@ describe('WriterSwarmPlugin', () => {
 			directory: process.cwd(),
 		});
 
-		expect(plugin.name).toBe('OpenCode-StoryForge');
+		expect(plugin.name).toBe('opencode-writer-swarm');
 		expect(plugin.agent).toBeDefined();
 		expect(plugin.tool?.read_writer_file).toBeDefined();
 

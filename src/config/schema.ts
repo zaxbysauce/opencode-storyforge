@@ -49,6 +49,7 @@ export type GuardrailsConfig = z.infer<typeof GuardrailsConfigSchema>;
 export const HooksConfigSchema = z.object({
 	pre_agent: z.string().optional(),
 	post_agent: z.string().optional(),
+	compaction: z.boolean().default(true),
 });
 
 export type HooksConfig = z.infer<typeof HooksConfigSchema>;
@@ -175,5 +176,7 @@ export function getGuardrailsDefaults(): GuardrailsConfig {
 }
 
 export function getHooksDefaults(): HooksConfig {
-	return {};
+	return {
+		compaction: true,
+	};
 }
