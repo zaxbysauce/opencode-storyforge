@@ -7,6 +7,7 @@ import {
 	createDelegationTrackerHook,
 	createSystemEnhancerHook,
 	createContextBudgetHook,
+	createCompactionCustomizerHook,
 	safeHook,
 	composeHandlers,
 } from './hooks';
@@ -77,6 +78,7 @@ export const WriterSwarmPlugin: Plugin = async ({ client, project, directory }) 
 	const delegationHandler = createDelegationTrackerHook(config);
 	const commandHandler = createSwarmCommandHandler(directory);
 	const guardrailsHook = createGuardrailsHook(config.guardrails ?? getGuardrailsDefaults());
+	const compactionHook = createCompactionCustomizerHook(config, directory);
 
 	const startupMessage = formatStartupLog(agentCount, safeConfigKeys, directory);
 	console.log(startupMessage);
@@ -136,6 +138,12 @@ export const WriterSwarmPlugin: Plugin = async ({ client, project, directory }) 
 		// biome-ignore lint/suspicious/noExplicitAny: Plugin API requires generic hook wrappers
 		'experimental.chat.system.transform': systemTransform as any,
 
+		// Handle session compaction
+		// biome-ignore lint/suspicious/noExplicitAny: Plugin API requires generic hook wrappers
+		'experimental.session.compacting': compactionHook[
+			'experimental.session.compacting'
+		] as any,
+
 		// biome-ignore lint/suspicious/noExplicitAny: Plugin API requires generic hook wrappers
 		'chat.message': safeHook(delegationHandler) as any,
 
@@ -143,10 +151,10 @@ export const WriterSwarmPlugin: Plugin = async ({ client, project, directory }) 
 		'command.execute.before': safeHook(commandHandler) as any,
 
 		// biome-ignore lint/suspicious/noExplicitAny: Plugin API requires generic hook wrappers
-		'tool.execute.before': guardrailsHook.toolBefore as any,
+		'tool.execute.before': safeHook(guardrailsHook.toolBefore) as any,
 
 		// biome-ignore lint/suspicious/noExplicitAny: Plugin API requires generic hook wrappers
-		'tool.execute.after': guardrailsHook.toolAfter as any,
+		'tool.execute.after': safeHook(guardrailsHook.toolAfter) as any,
 	};
 };
 
